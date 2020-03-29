@@ -1,0 +1,498 @@
+<html>
+
+<head>
+	<script language="JavaScript" src="${pluginsBaseRootUrl}/web.shared/jquery.min.js"></script>
+	<script src="${pluginsBaseRootUrl}/web.shared/jquery.class.js" type="text/javascript"></script>
+	<script src="${pluginsBaseRootUrl}/web.shared/elvis_api/js/jquery.elvis.js" type="text/javascript"></script>
+	<script src="http://code.jquery.com/jquery.min.js"></script>
+	<script src="https://mbraak.github.io/jqTree/tree.jquery.js"></script>
+	<script language="JavaScript">
+		const elvisApi = new ElvisAPI('${serverUrl}');
+		let csrfToken,
+			version,
+			id = 0,
+			filePath = "taxonomies/custom-tags-list.txt";
+
+		const init = _ => {
+			$("#h2").focusout(function () {
+				filePath = $(this).val();
+				selectionUpdated();
+			})
+			$("#h2").on('keypress', function (e) {
+				if (e.which == 13) $(this).blur();
+			});
+			selectionUpdated();
+		}
+
+		function selectionUpdated() {
+			$(".loading").show();
+			if (!filePath) return;
+			$("#h2").val(filePath);
+			elvisApi.csrf(data => {
+				$.ajax({
+					url: `${serverUrl}/private-api/system/config/file/${btoa(filePath)}`,
+					method: "GET",
+					headers: {
+						'X-CSRF-TOKEN': data.csrfToken
+					},
+					timeout: 0
+				}).done(function (response) {
+					$('#taxonomieTree').tree('destroy');
+					$(".loading").hide();
+					version = response.version;
+					let root = node('root');
+					response.content.toString().split('\n').filter(a => a).reduce(append_rec, root);
+					$('#taxonomieTree').tree({
+						dragAndDrop: true,
+						autoOpen: false,
+						autoEscape: false,
+						data: root.children,
+						onCreateLi: function (node, $li) {
+							let name = node.name.toString()
+							name = name.substring(6, node.name.toString().length - 7)
+							$li.find('.jqtree-title').append(`<span class="showhover" onclick="add(${node.id})">+</span>`);
+							$li.find('.jqtree-title').append(`<span class="showhover red" onclick="remove(${node.id})">x</span>`);
+							$li.find('.jqtree-title').before(`<input type="text" class="noborder hide" value="${name}" node-id="${node.id}" placeholder="${name}"></input>`);
+						}
+					}).on(
+						'tree.dblclick',
+						event => { $("span:first", event.node.element).hide(); $(`input[node-id=${event.node.id}]`).show() }
+					).on(
+						'tree.refresh',
+						_ => save(), updateOnEdit()
+					);
+					updateOnEdit();
+				}).fail((jqXHR, textStatus) => {
+					if (jqXHR.status == 400) textStatus = `File ${filePath} could not be found`
+					$('#taxonomieTree').html(`<h2 style="color: red">${textStatus.toString()}`);
+					$(".loading").hide();
+				});
+			});
+		}
+
+		const updateOnEdit = _ => {
+			$(".noborder").each(function (index) {
+				let idn = $(this).attr('node-id');
+				$(this).focusout(function () { update(idn, $(this).val()) });
+				$(this).on('keypress', function (e) { if (e.which == 13) update(idn, $(this).val()) });
+			});
+		}
+
+		const node = (name, lvl) => {
+			let children = [],
+				parent = null;
+			return {
+				name: `<span>${name}</span>`,
+				children: children,
+				id: id++,
+				lvl: () => lvl == undefined ? -1 : lvl,
+				parent: () => parent,
+				setParent: p => { parent = p },
+				appendChildren: function (c) {
+					children.push(c);
+					c.setParent(this);
+					return this;
+				}
+			}
+		}
+
+		const append_rec = (prev, curr) => {
+			if (typeof (curr) == 'string') {
+				curr = curr.split('\t');
+				curr = node(curr.pop(), curr.length);
+			}
+			if (curr.lvl() > prev.lvl()) prev.appendChildren(curr);
+			else if (curr.lvl() < prev.lvl()) append_rec(prev.parent(), curr)
+			else prev.parent().appendChildren(curr);
+			return curr;
+		}
+
+		const add = idn => {
+			let parent_node = $('#taxonomieTree').tree('getNodeById', idn);
+			$('#taxonomieTree').tree(
+				'appendNode',
+				{
+					name: '<span>nieuwe node</span>',
+					id: id++
+				},
+				parent_node
+			);
+		}
+
+		const remove = (idn) => {
+			let node = $('#taxonomieTree').tree('getNodeById', idn);
+			$('#taxonomieTree').tree('removeNode', node);
+		}
+
+		const update = (idn, updated) => {
+			let node = $('#taxonomieTree').tree('getNodeById', idn)
+			$('#taxonomieTree').tree('updateNode', node, `<span>${updated}</span>`);
+			$(".noborder").each(function () {
+				let idn = $(this).attr('node-id')
+				$(this).focusout(function () {
+					update(idn, $(this).val())
+				})
+			});
+		}
+
+		const save = _ => {
+			$(".loading").show();
+			let tree = JSON.parse($('#taxonomieTree').tree('toJson'));
+			let parsed = json2tab(tree, 0);
+			elvisApi.csrf(function (data) {
+				$.ajax({
+					url: `${serverUrl}/private-api/system/config/file/${btoa(filePath)}`,
+					method: "PUT",
+					timeout: 0,
+					headers: {
+						'X-CSRF-TOKEN': data.csrfToken,
+						'Content-Type': "application/json"
+					},
+					data: JSON.stringify({
+						content: parsed,
+						version: version++,
+						headers: {},
+						id: btoa(filePath),
+						path: filePath
+					})
+				}).done(function (response) {
+					$(".loading").hide();
+					// alert(JSON.stringify(response));
+				});
+			});
+		}
+
+		const json2tab = (obj, tabs) => {
+			let str = "";
+			for (let line in obj) {
+				line = obj[line]
+				str += ("\t".repeat(tabs) + (line.name.substring(6, line.name.toString().length - 7) + "\n"));
+				if (typeof line.children == "object") str += json2tab(line.children, tabs + 1)
+			}
+			return str;
+		}
+
+		$(init);
+	</script>
+	<style type="text/css">
+		@import url('https://fonts.googleapis.com/css?family=Lato:300,400,700');
+
+		* {
+			box-sizing: border-box;
+			-webkit-font-smoothing: antialiased;
+			font-weight: 400;
+			font-family: Lato, sans-serif !important;
+			outline: none !important;
+		}
+
+		html,
+		body {
+			height: 100%;
+			width: 100%;
+			padding: 0;
+			margin: 0px;
+		}
+
+		#h2 {
+			color: #009ee3;
+			font-size: 16px;
+			font-weight: 700;
+			border: none;
+			border-bottom: 1px solid #e5e9ea;
+			padding: 1px 5px;
+			margin-top: 0;
+			margin-bottom: 5px;
+			width: 100vw;
+		}
+
+		a {
+			display: block;
+		}
+
+		.jqtree-toggler {
+			font-size: 10px;
+			margin-top: 4px;
+		}
+
+		.hide {
+			display: none;
+		}
+
+		.red {
+			color: #ff3232 !important;
+			margin-left: 16px !important;
+			font-size: 16px !important;
+		}
+
+		.showhover {
+			opacity: 0;
+			cursor: pointer;
+			font-size: 18px;
+			color: #009ee3;
+			margin-left: 3px;
+			position: absolute;
+			top: 3px;
+		}
+
+		.jqtree-element:hover .showhover {
+			opacity: 1;
+		}
+
+		.noborder {
+			border: none;
+			background-color: transparent;
+			font-size: 16px !important;
+		}
+
+		.noborder:focus {
+			border: 1px #fff solid;
+		}
+
+		ul.jqtree-tree {
+			list-style: none outside;
+			margin-left: 0;
+			margin-bottom: 0;
+			padding: 0
+		}
+
+		ul.jqtree-tree ul.jqtree_common {
+			list-style: none outside;
+			margin-left: 12px;
+			margin-right: 0;
+			margin-bottom: 0;
+			padding: 0;
+			display: block
+		}
+
+		ul.jqtree-tree li.jqtree-closed>ul.jqtree_common {
+			display: none
+		}
+
+		ul.jqtree-tree li.jqtree_common {
+			clear: both;
+			list-style-type: none
+		}
+
+		ul.jqtree-tree .jqtree-toggler {
+			border-bottom: none;
+			text-decoration: none;
+			vertical-align: middle
+		}
+
+		ul.jqtree-tree .jqtree-toggler:hover {
+			text-decoration: none
+		}
+
+		ul.jqtree-tree .jqtree-toggler.jqtree-closed {
+			background-position: 0 0
+		}
+
+		ul.jqtree-tree .jqtree-toggler.jqtree-toggler-left {
+			margin-right: .5em
+		}
+
+		ul.jqtree-tree .jqtree-toggler.jqtree-toggler-right {
+			margin-left: .5em
+		}
+
+		ul.jqtree-tree .jqtree-element {
+			cursor: pointer;
+			position: relative;
+			display: -webkit-box;
+			display: flex;
+			padding: 5px
+		}
+
+		ul.jqtree-tree .jqtree-title {
+			vertical-align: middle;
+			margin-left: 1.5em
+		}
+
+		ul.jqtree-tree .jqtree-title.jqtree-title-folder {
+			margin-left: 0
+		}
+
+		.ul.jqtree-tree li.jqtree-selected>.jqtree-element {
+			text-shadow: none !important
+		}
+
+		ul.jqtree-tree li.jqtree-folder {
+			margin-bottom: 4px
+		}
+
+		ul.jqtree-tree li.jqtree-folder.jqtree-closed {
+			margin-bottom: 1px
+		}
+
+		ul.jqtree-tree li.jqtree-ghost {
+			position: relative;
+			z-index: 10;
+			margin-right: 10px
+		}
+
+		ul.jqtree-tree li.jqtree-ghost span {
+			display: block
+		}
+
+		ul li.jqtree_common div.jqtree-element {
+			border: solid 1.5px #fff;
+			border-radius: 4px
+		}
+
+		ul.jqtree-tree li.jqtree-ghost span.jqtree-line {
+			background-color: #009ee3;
+			height: 2px;
+			padding: 0;
+			position: absolute;
+			top: -1px;
+			left: 2px;
+			width: 100%
+		}
+
+		ul.jqtree-tree li.jqtree-ghost.jqtree-inside {
+			margin-left: 48px
+		}
+
+		ul.jqtree-tree span.jqtree-border {
+			position: absolute;
+			display: block;
+			left: -2px;
+			top: 0;
+			border: solid 2px #009ee3;
+			border-radius: 6px;
+			margin: 0;
+			box-sizing: content-box
+		}
+
+		ul.jqtree-tree li.jqtree-selected>.jqtree-element,
+		ul.jqtree-tree li.jqtree-selected>.jqtree-element:hover {
+			border: 1.5px #009ee3 solid;
+			border-radius: 4px
+		}
+
+		ul.jqtree-tree .jqtree-moving>.jqtree-element .jqtree-title {
+			outline: dashed 1px #009ee3
+		}
+
+		ul.jqtree-tree.jqtree-rtl {
+			direction: rtl
+		}
+
+		ul.jqtree-tree.jqtree-rtl ul.jqtree_common {
+			margin-left: 0;
+			margin-right: 12px
+		}
+
+		ul.jqtree-tree.jqtree-rtl .jqtree-toggler {
+			margin-left: .5em;
+			margin-right: 0
+		}
+
+		ul.jqtree-tree.jqtree-rtl .jqtree-title {
+			margin-left: 0;
+			margin-right: 1.5em
+		}
+
+		ul.jqtree-tree.jqtree-rtl .jqtree-title.jqtree-title-folder {
+			margin-right: 0
+		}
+
+		ul.jqtree-tree.jqtree-rtl li.jqtree-ghost {
+			margin-right: 0;
+			margin-left: 10px
+		}
+
+		ul.jqtree-tree.jqtree-rtl li.jqtree-ghost span.jqtree-circle {
+			right: -6px
+		}
+
+		ul.jqtree-tree.jqtree-rtl li.jqtree-ghost span.jqtree-line {
+			right: 2px
+		}
+
+		ul.jqtree-tree.jqtree-rtl li.jqtree-ghost.jqtree-inside {
+			margin-left: 0;
+			margin-right: 48px
+		}
+
+		ul.jqtree-tree.jqtree-rtl span.jqtree-border {
+			right: -2px
+		}
+
+		span.jqtree-dragging {
+			color: #fff;
+			background: #000;
+			opacity: .6;
+			cursor: pointer;
+			padding: 2px 8px
+		}
+
+		.overlay {
+			position: absolute;
+			top: 0;
+			left: 0;
+			height: 100%;
+			width: 100%;
+			background-color: #333;
+			opacity: .4;
+			z-index: 100;
+		}
+
+		.loader {
+			z-index: 101;
+			position: absolute;
+			top: calc(50vh - 22px);
+			left: calc(50vw - 22px);
+			width: 50px;
+			height: 50px;
+			background-color: #009ee3;
+		}
+
+		.square {
+			border: 3px solid #fff;
+			width: 20px;
+			height: 20px;
+			position: absolute;
+			top: 15px;
+			left: 15px;
+			-webkit-animation: spin 1s linear infinite;
+			animation: spin 1s linear infinite;
+		}
+
+		@-webkit-keyframes spin {
+			0% {
+				-webkit-transform: rotate(0deg);
+			}
+
+			100% {
+				-webkit-transform: rotate(360deg);
+			}
+		}
+
+		@keyframes spin {
+			0% {
+				transform: rotate(0deg);
+			}
+
+			100% {
+				transform: rotate(360deg);
+			}
+		}
+	</style>
+</head>
+
+<body>
+	<div class="loading">
+		<div class="loader">
+			<div class="square"></div>
+		</div>
+		<div class="overlay"></div>
+	</div>
+	<div class="elvisContext">
+		<input type="text" id="h2"></input>
+		<div id="taxonomieTree"></div>
+	</div>
+
+</body>
+
+</html>
