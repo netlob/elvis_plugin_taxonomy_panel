@@ -74,7 +74,7 @@
 			$(".noborder").each(function (index) {
 				let idn = $(this).attr('node-id');
 				$(this).focusout(function () { update(idn, $(this).val()) });
-				$(this).on('keypress', function (e) { if (e.which == 13) update(idn, $(this).val()) });
+				$(this).on('keypress', function (e) { if (e.which == 13) $(this).blur() });
 			});
 		}
 
@@ -108,8 +108,8 @@
 		}
 
 		const add = idn => {
-			let parent_node = $('#taxonomieTree').tree('getNodeById', idn);
-			$('#taxonomieTree').tree(
+			const parent_node = $('#taxonomieTree').tree('getNodeById', idn);
+			const node = $('#taxonomieTree').tree(
 				'appendNode',
 				{
 					name: '<span>nieuwe node</span>',
@@ -117,28 +117,35 @@
 				},
 				parent_node
 			);
+			const $li = $(node.element);
+			let name = node.name.toString()
+			name = name.substring(6, node.name.toString().length - 7)
+			$li.find('.jqtree-title').append(`<span class="showhover" onclick="add(${node.id})">+</span>`);
+			$li.find('.jqtree-title').append(`<span class="showhover red" onclick="remove(${node.id})">x</span>`);
+			$li.find('.jqtree-title').before(`<input type="text" class="noborder hide" value="${name}" node-id="${node.id}" placeholder="${name}"></input>`);
+			updateOnEdit();
 		}
 
 		const remove = (idn) => {
-			let node = $('#taxonomieTree').tree('getNodeById', idn);
+			const node = $('#taxonomieTree').tree('getNodeById', idn);
 			$('#taxonomieTree').tree('removeNode', node);
 		}
 
 		const update = (idn, updated) => {
-			let node = $('#taxonomieTree').tree('getNodeById', idn)
+			const node = $('#taxonomieTree').tree('getNodeById', idn)
 			$('#taxonomieTree').tree('updateNode', node, `<span>${updated}</span>`);
 			$(".noborder").each(function () {
-				let idn = $(this).attr('node-id')
+				const idnn = $(this).attr('node-id')
 				$(this).focusout(function () {
-					update(idn, $(this).val())
+					update(idnn, $(this).val())
 				})
 			});
 		}
 
 		const save = _ => {
 			$(".loading").show();
-			let tree = JSON.parse($('#taxonomieTree').tree('toJson'));
-			let parsed = json2tab(tree, 0);
+			const tree = JSON.parse($('#taxonomieTree').tree('toJson'));
+			const parsed = json2tab(tree, 0);
 			elvisApi.csrf(function (data) {
 				$.ajax({
 					url: `${serverUrl}/private-api/system/config/file/${btoa(filePath)}`,
@@ -157,7 +164,6 @@
 					})
 				}).done(function (response) {
 					$(".loading").hide();
-					// alert(JSON.stringify(response));
 				});
 			});
 		}
