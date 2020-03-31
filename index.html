@@ -9,11 +9,13 @@
 	<script language="JavaScript">
 		const elvisApi = new ElvisAPI('${serverUrl}');
 		let csrfToken,
+			elvisContext,
 			version,
 			id = 0,
 			filePath = "taxonomies/custom-tags-list.txt";
 
 		const init = _ => {
+			elvisContext = ElvisPlugin.resolveElvisContext();
 			$("#h2").focusout(function () {
 				filePath = $(this).val();
 				selectionUpdated();
@@ -50,8 +52,9 @@
 						onCreateLi: function (node, $li) {
 							let name = node.name.toString()
 							name = name.substring(6, node.name.toString().length - 7)
-							$li.find('.jqtree-title').append(`<span class="showhover" onclick="add(${node.id})">+</span>`);
+							$li.find('.jqtree-title').append(`<span class="showhover green" onclick="add(${node.id})">+</span>`);
 							$li.find('.jqtree-title').append(`<span class="showhover red" onclick="remove(${node.id})">x</span>`);
+							$li.find('.jqtree-title').append(`<span class="showhover blue" onclick="apply(${node.id})">APPLY</span>`);
 							$li.find('.jqtree-title').before(`<input type="text" class="noborder hide" value="${name}" node-id="${node.id}" placeholder="${name}"></input>`);
 						}
 					}).on(
@@ -124,6 +127,10 @@
 			$li.find('.jqtree-title').append(`<span class="showhover red" onclick="remove(${node.id})">x</span>`);
 			$li.find('.jqtree-title').before(`<input type="text" class="noborder hide" value="${name}" node-id="${node.id}" placeholder="${name}"></input>`);
 			updateOnEdit();
+			$('#taxonomieTree').tree('openNode', parent_node);
+			$('#taxonomieTree').tree('scrollToNode', node);
+			$('#taxonomieTree').tree('selectNode', node);
+
 		}
 
 		const remove = (idn) => {
@@ -132,7 +139,7 @@
 		}
 
 		const update = (idn, updated) => {
-			const node = $('#taxonomieTree').tree('getNodeById', idn)
+			const node = $('#taxonomieTree').tree('getNodeById', idn);
 			$('#taxonomieTree').tree('updateNode', node, `<span>${updated}</span>`);
 			$(".noborder").each(function () {
 				const idnn = $(this).attr('node-id')
@@ -140,6 +147,16 @@
 					update(idnn, $(this).val())
 				})
 			});
+		}
+
+		const apply = (idn) => {
+			if (!elvisContext.hasSelection() || !elvisContext.isSingleItem()) return alert("Please select 1 asset")
+			const node = $('#taxonomieTree').tree('getNodeById', idn);
+			elvisApi.update(elvisContext.activeTab.originalAssetSelection[0].id,
+				{
+					cf_taxoTag: node.name.substring(6, node.name.toString().length - 7)
+				}
+			);
 		}
 
 		const save = _ => {
@@ -228,20 +245,30 @@
 			display: none;
 		}
 
-		.red {
-			color: #ff3232 !important;
-			margin-left: 16px !important;
-			font-size: 16px !important;
-		}
-
 		.showhover {
 			opacity: 0;
 			cursor: pointer;
 			font-size: 18px;
-			color: #009ee3;
 			margin-left: 3px;
 			position: absolute;
 			top: 3px;
+		}
+
+		.red {
+			color: #ff3232 !important;
+			margin-left: 17px !important;
+			font-size: 16px !important;
+		}
+
+		.green {
+			color: #40bb40;
+		}
+
+		.blue {
+			color: #009ee3;
+			margin-left: 30px !important;
+			font-size: 12px !important;
+			margin-top: 4.8px;
 		}
 
 		.jqtree-element:hover .showhover {
@@ -437,11 +464,11 @@
 		}
 
 		.overlay {
-			position: absolute;
+			position: fixed;
 			top: 0;
 			left: 0;
-			height: 100%;
-			width: 100%;
+			height: 100vh;
+			width: 100vw;
 			background-color: #333;
 			opacity: .4;
 			z-index: 100;
