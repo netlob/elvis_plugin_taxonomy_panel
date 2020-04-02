@@ -4,7 +4,7 @@
 	<script language="JavaScript" src="${pluginsBaseRootUrl}/web.shared/jquery.min.js"></script>
 	<script src="${pluginsBaseRootUrl}/web.shared/jquery.class.js" type="text/javascript"></script>
 	<script src="${pluginsBaseRootUrl}/web.shared/elvis_api/js/jquery.elvis.js" type="text/javascript"></script>
-	<script src="http://code.jquery.com/jquery.min.js"></script>
+	<script src="https://code.jquery.com/jquery.min.js"></script>
 	<script src="https://mbraak.github.io/jqTree/tree.jquery.js"></script>
 	<script language="JavaScript">
 		const elvisApi = new ElvisAPI('${serverUrl}');
@@ -16,6 +16,7 @@
 
 		const init = _ => {
 			elvisContext = ElvisPlugin.resolveElvisContext();
+			elvisContext.updateCallback = ;
 			$("#h2").focusout(function () {
 				filePath = $(this).val();
 				selectionUpdated();
@@ -183,6 +184,11 @@
 					$(".loading").hide();
 				});
 			});
+		}
+
+		const selectOnAssetChange = _ => {
+			if (!elvisContext.isSingleItem()) return
+			const hit = elvisContext.activeTab.originalAssetSelection[0];
 		}
 
 		const json2tab = (obj, tabs) => {
